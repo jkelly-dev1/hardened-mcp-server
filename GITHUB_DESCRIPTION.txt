@@ -1,0 +1,1 @@
+Tool-definition pinning for MCP (revision 2026-07-28), measured rather than asserted. Pinning what an approval dialog shows catches 1 of 8 rug pulls; pinning the raw wire object catches 7. Text folding trades exactly one detection for one false alarm, and one attack is missed by all 20 policies. Real SDK, real stdio servers.

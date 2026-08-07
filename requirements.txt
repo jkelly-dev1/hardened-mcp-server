@@ -1,0 +1,31 @@
+# The measurement layer imports nothing outside the standard library. Every
+# number in README.md section 4 comes from `python -m pin.gate`, which runs on
+# a bare Python install -- hashing, JSON canonicalization, $ref resolution and
+# NFKC folding are all written out here rather than delegated, so a reader can
+# follow what was hashed without reading a dependency.
+pytest>=8,<10
+
+# The SDK is needed only by pin/wire_server.py, pin/wire_client.py, and the two
+# legs that speak the protocol. Pinned to a major: 2.x implements protocol
+# revision 2026-07-28 (stateless core, server/discover, ttlMs/cacheScope,
+# x-mcp-header), and the 1.x line implements the older handshake revision that
+# this project's findings do not apply to unchanged.
+#
+# tests/test_integration.py and tests/test_exposure_and_shadow.py SKIP with a
+# stated reason when it is absent; they do not fail. `pytest -q` is green on a
+# checkout with only the line above installed.
+mcp>=2.0,<3.0
+
+# Needed only by scripts/real_run.py, the one paid capture. Commented out on
+# purpose: the offline suite, the gate and both protocol legs must all pass
+# without it, and an uncommented line here would let a missing import become a
+# CI failure in a job that has no business talking to a model.
+#   pip install anthropic
+# anthropic>=0.60
+
+# NOT A DEPENDENCY, RECORDED SO NOBODY ADDS IT: `pytest-anyio` on PyPI is an
+# empty 0.0.0 placeholder. The `anyio` marker these tests use comes from the
+# pytest plugin that ships inside `anyio` itself, which arrives with `mcp`.
+# Installing the placeholder changes nothing and adds an unowned name to the
+# dependency tree -- which is threat T10 in the MCP catalog, in the
+# requirements file of a repository about supply-chain integrity.

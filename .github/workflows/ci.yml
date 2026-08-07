@@ -1,0 +1,95 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel an in-flight run when the same branch is pushed again.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The offline job installs nothing but pytest. Every number in README.md
+  # section 4 is produced by code that imports only the standard library. If
+  # the measurement ever starts needing the SDK, this job goes red, which is
+  # the signal that the claim "the grid runs anywhere" has stopped being true.
+  # The protocol tests skip here, with reasons.
+  measurement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      # Pinned to current majors (verified against the CI-green sibling repos):
+      # checkout v7, setup-python v7.
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install pytest only
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pytest>=8,<10"
+
+      # -rs prints the skip reasons, so a green run here shows WHICH tests
+      # skipped and why rather than looking like full coverage.
+      - name: Tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest -q -rs
+
+      # The gate checks the numbers in the prose, not behavior. A refactor that
+      # keeps every test green while moving wire/semantic from 7/8 to 6/8 has
+      # made the README wrong, and that is a different failure from a bug.
+      - name: Pinning gate
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pin.gate
+
+      - name: Demo (offline leg only)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/run_demo.py --matrix
+
+  # Separate job because it launches subprocesses and speaks a protocol.
+  # Legs 2 and 3 start real MCP servers over stdio. That is more moving parts
+  # than the measurement needs, so it is kept out of the job above: an SDK
+  # release that breaks an import can never turn the offline suite red, and the
+  # badge keeps meaning "the measurement still works".
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install with the SDK
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Protocol tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest tests/test_integration.py tests/test_exposure_and_shadow.py -v -rs
+
+      - name: Full demo (all three legs)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/run_demo.py

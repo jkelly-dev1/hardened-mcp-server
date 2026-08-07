@@ -1,0 +1,21 @@
+[project]
+name = "hardened-mcp-server"
+version = "0.1.0"
+description = "Tool-definition pinning for MCP, and a measurement of which bytes you have to hash before the pin covers the attack."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "James Kelly" }]
+dependencies = []
+
+[project.optional-dependencies]
+# The protocol legs. The offline measurement and the gate need neither.
+mcp = ["mcp>=2.0,<3.0"]
+dev = ["pytest>=8,<10"]
+# scripts/real_run.py only. Nothing imported by the measurement, the gate, or
+# the test suite depends on it.
+real = ["anthropic>=0.60"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
