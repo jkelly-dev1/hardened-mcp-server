@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from pin.canonical import DECLARED_FIELDS, canonicalize, fold_text, resolve_schema, select
 from pin.models import Canonicalization, FieldSet
 
@@ -229,7 +231,14 @@ def test_declared_fields_matches_every_field_the_sdk_tool_type_declares() -> Non
     This test is the diff, run every time. When the SDK adds a field it FAILS
     HERE, naming the field, instead of quietly widening the blind spot.
     """
-    from mcp.types import Tool
+    # The offline job installs pytest and nothing else, so this test is the
+    # one in this file that needs the SDK and it skips without it, naming the
+    # reason. tests/test_integration.py and tests/test_exposure_and_shadow.py
+    # guard the same way at module level; this file is otherwise SDK-free, so
+    # the guard belongs in the test rather than above it.
+    Tool = pytest.importorskip(
+        "mcp.types", reason="the mcp SDK is not installed"
+    ).Tool
 
     sdk_fields = {(f.alias or name) for name, f in Tool.model_fields.items()}
     assert DECLARED_FIELDS == sdk_fields, (
