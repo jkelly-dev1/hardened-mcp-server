@@ -36,7 +36,7 @@ from pin.models import PinPolicy, Verdict
 from pin.store import PinStore
 
 #: `mcp.client.caching.MAX_TTL_MS`. Restated here rather than imported so the
-#: pure layer stays free of SDK imports; `tests/test_exposure.py::
+#: pure layer stays free of SDK imports; `tests/test_integration.py::
 #: test_the_sdk_ttl_ceiling_is_what_this_module_assumes` asserts they agree, so
 #: an SDK change that moves the ceiling fails a test instead of silently
 #: invalidating the published table.
@@ -238,17 +238,6 @@ def _mutated_tool_name(mutation_key: str) -> str:
         if mutation.key == mutation_key:
             return mutation.tool
     raise KeyError(mutation_key)
-
-
-def _is_mutated(definition: dict | None, tool_name: str) -> bool:
-    """Whether this definition differs from the approved baseline.
-
-    Compared against the corpus rather than against a flag, so the answer comes
-    from the bytes the server actually sent.
-    """
-    if definition is None:
-        return False
-    return definition != corpus.by_name(tool_name)
 
 
 def format_table(results: tuple[ExposureResult, ...]) -> str:

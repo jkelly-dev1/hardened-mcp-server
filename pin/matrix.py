@@ -51,13 +51,6 @@ class Cell:
     def noticed(self) -> bool:
         return self.verdict is Verdict.CHANGED
 
-    @property
-    def correct(self) -> bool:
-        """Detected an attack, or stayed quiet on a benign change."""
-        if self.mutation.kind == "adversarial":
-            return self.noticed
-        return not self.noticed
-
 
 @dataclass(frozen=True, slots=True)
 class ArmResult:

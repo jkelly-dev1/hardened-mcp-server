@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The offline job installs nothing but pytest. Every number in README.md
-  # section 4 is produced by code that imports only the standard library. If
+  # The offline job installs nothing but pytest. Every number in README.md's
+  # grid is produced by code that imports only the standard library. If
   # the measurement ever starts needing the SDK, this job goes red, which is
   # the signal that the claim "the grid runs anywhere" has stopped being true.
   # The protocol tests skip here, with reasons.
@@ -28,9 +28,9 @@ jobs:
     steps:
       # Pinned to current majors (verified against the CI-green sibling repos):
       # checkout v7, setup-python v7.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -60,20 +60,31 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_demo.py --matrix
 
+      # SAMPLE_RUN.md quotes the gate's output verbatim. This step is what
+      # makes "verbatim" a claim that can fail: the quoted block is diffed
+      # against a fresh run. The protocol job below does the same for all
+      # three legs.
+      - name: SAMPLE_RUN.md gate capture is current
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/check_sample_run.py --offline
+
   # Separate job because it launches subprocesses and speaks a protocol.
-  # Legs 2 and 3 start real MCP servers over stdio. That is more moving parts
-  # than the measurement needs, so it is kept out of the job above: an SDK
-  # release that breaks an import can never turn the offline suite red, and the
-  # badge keeps meaning "the measurement still works".
+  # Legs 2 and 3 start real MCP servers over stdio, so an SDK release that
+  # breaks an import fails HERE, under the name "protocol", while the offline
+  # measurement above stays green: the two are different failures with
+  # different fixes, and the split keeps them tellable apart. Both jobs gate
+  # the badge. README.md promises that an SDK change fails a test rather than
+  # silently invalidating a claim, and a job whose failure the badge ignored
+  # would not keep that promise.
   protocol:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -93,3 +104,8 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/run_demo.py
+
+      - name: SAMPLE_RUN.md capture is current (gate and all three legs)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/check_sample_run.py

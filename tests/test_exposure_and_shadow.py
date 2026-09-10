@@ -81,6 +81,34 @@ async def test_re_reading_before_every_call_closes_the_window() -> None:
     assert result.listings == result.calls
 
 
+async def test_the_leg_2_table_in_the_readme_is_what_the_arms_produce() -> None:
+    """Every column of README.md's leg-2 table, per policy, as exact counts.
+
+    The shape assertions above are satisfied by a counter that never
+    increments: an exposure column of zeros is still sorted, and nothing
+    above reads the refusal column at all. This test pins the numbers the
+    page prints, so a counter that stops counting turns the table red here
+    before a reader finds the page wrong.
+    """
+    from pin import exposure
+
+    expected = {
+        # policy key: (listings, exposed, refused, detected after, in ms)
+        "honor-server": (2, 9, 2, 300_000),
+        "cap-60s": (6, 1, 10, 60_000),
+        "every-call": (12, 0, 11, 30_000),
+    }
+    for policy in exposure.POLICIES:
+        result = await exposure.run_arm(policy, RECOMMENDED)
+        observed = (
+            result.listings,
+            result.exposed_calls,
+            result.refused_calls,
+            result.detected_after_ms,
+        )
+        assert observed == expected[policy.key], policy.key
+
+
 # --------------------------------------------------------------------------- #
 # leg 3
 # --------------------------------------------------------------------------- #

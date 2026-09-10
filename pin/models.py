@@ -19,8 +19,8 @@ them because they share a word.
              definition of a hash collision an attacker can steer.
 
 A pin is a hash. Which of these you apply before hashing decides what the pin
-can see, and the two families must not be chosen with one switch. Section 4 of
-README.md carries the measurement; `PolicyGrid` below is what produces it.
+can see, and the two families must not be chosen with one switch. README.md's
+"The grid" section carries the measurement; `POLICY_GRID` below produces it.
 
 The second distinction, the headline: the field a human reviews and the field
 an attack uses are different fields. An approval dialog shows a name and a
@@ -35,7 +35,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 
 class FieldSet(str, Enum):
@@ -68,10 +67,10 @@ class FieldSet(str, Enum):
     """The entire JSON object as it arrived, including keys the SDK's `Tool`
     model does not declare.
 
-    Not redundant with declared, and this is easy to miss: `mcp_types` builds
-    `Tool` with `ConfigDict(extra="ignore")`, so a top-level key the schema
-    does not name is dropped at parse time and is invisible to anything
-    fingerprinting the parsed object. Whether that key reaches the model
+    Not redundant with declared, and this is easy to miss: `mcp_types.Tool`
+    leaves pydantic's `extra` setting at its default, `ignore`, so a top-level
+    key the schema does not name is dropped at parse time and is invisible to
+    anything fingerprinting the parsed object. Whether that key reaches the model
     depends on how the host serializes tools into the prompt, which is a host
     decision the protocol does not constrain. Pinning the parsed model is
     pinning a lossy view of what the server sent."""
@@ -144,7 +143,7 @@ class PinPolicy:
         return self.label
 
 
-#: Every policy the measurement evaluates. The full cross product is 16 cells
+#: Every policy the measurement evaluates. The full cross product is 20 cells
 #: and costs nothing to compute, and reporting the whole grid is what makes the
 #: two axes visibly independent. A table with the interesting rows pre-selected
 #: would be an argument rather than a measurement.
@@ -153,8 +152,9 @@ POLICY_GRID: tuple[PinPolicy, ...] = tuple(
 )
 
 
-#: The policy this project recommends, and the reasoning is in README.md
-#: section 5. Widest field set, every safe normalization, no text folding.
+#: The policy this project recommends, and the reasoning is in README.md under
+#: "Recommended policy". Widest field set, every safe normalization, no text
+#: folding.
 RECOMMENDED = PinPolicy(fields=FieldSet.WIRE, canonical=Canonicalization.SEMANTIC)
 
 #: The policy an approval dialog implies, which is the one being measured
@@ -196,27 +196,6 @@ class Fingerprint:
     """The exact string that was hashed. Kept because a pin that cannot show
     its own input produces a diff nobody can act on, and the re-approval
     prompt is what detecting a change is for."""
-
-
-@dataclass(frozen=True, slots=True)
-class ToolRecord:
-    """A tool definition as it arrived on the wire, before the SDK parses it.
-
-    `raw` is the JSON object from `tools/list`, unmodified. Everything the
-    fingerprinter needs is derived from it; nothing here is taken from a
-    parsed model, so FieldSet.WIRE has something to see.
-    """
-
-    server: str
-    """The identity the pin is bound to. See pin/identity.py; this is a
-    transport-anchored value, never `serverInfo.name`."""
-
-    raw: dict[str, Any]
-
-    @property
-    def name(self) -> str:
-        value = self.raw.get("name")
-        return value if isinstance(value, str) else ""
 
 
 @dataclass(slots=True)

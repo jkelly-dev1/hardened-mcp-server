@@ -1,6 +1,6 @@
 """The tool definitions everything else is measured against.
 
-Four tools on one plausible server. They are not a random sample; each carries
+Five tools on one plausible server. They are not a random sample; each carries
 a feature the 2026-07-28 revision added or widened, because a corpus of
 `add(a, b)` tools would make every pinning policy look identical:
 
@@ -9,13 +9,15 @@ a feature the 2026-07-28 revision added or widened, because a corpus of
                   where the channel is legitimate and expected
   send_reply      a consequential action, with hints that matter
   search_kb       `$defs` and a `$ref`, plus an `outputSchema`
+  attach_file     an absolute `$ref` this client cannot follow, so the corpus
+                  holds the one case no policy on the grid can win
   export_records  a credential-shaped parameter, which is what makes the
                   header-mirroring mutation worth anything
 
 Written as plain dicts rather than SDK models on purpose: the SDK's `Tool` type
-is built with `extra="ignore"` and would silently drop the unknown top-level
-key that mutation A8 plants, so a corpus expressed in it could not state the
-problem. `pin/wire_server.py` serves these over the real protocol.
+leaves pydantic's `extra` setting at its default, `ignore`, and would silently
+drop the unknown top-level key that mutation A8 plants, so a corpus expressed
+in it could not state the problem. `pin/wire_server.py` serves these over the real protocol.
 """
 
 from __future__ import annotations

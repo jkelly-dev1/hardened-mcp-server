@@ -15,7 +15,7 @@ import json
 from typing import Any
 
 from pin.canonical import canonicalize, select
-from pin.models import Fingerprint, PinPolicy, ToolRecord
+from pin.models import Fingerprint, PinPolicy
 
 
 def fingerprint(raw: dict[str, Any], policy: PinPolicy) -> Fingerprint:
@@ -23,10 +23,6 @@ def fingerprint(raw: dict[str, Any], policy: PinPolicy) -> Fingerprint:
     canonical = canonicalize(select(raw, policy.fields), policy.canonical)
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return Fingerprint(digest=digest, policy=policy, canonical_form=canonical)
-
-
-def fingerprint_record(record: ToolRecord, policy: PinPolicy) -> Fingerprint:
-    return fingerprint(record.raw, policy)
 
 
 def describe_change(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
@@ -56,10 +52,20 @@ def _walk(before: Any, after: Any, path: str, out: list[str]) -> None:
         return
 
     if isinstance(before, list) and isinstance(after, list):
-        if len(before) != len(after):
-            out.append(f"~ {path} list length {len(before)} -> {len(after)}")
-        for index, (b, a) in enumerate(zip(before, after)):
-            _walk(b, a, f"{path}[{index}]", out)
+        # Compared by position, and an element past the shorter list is shown
+        # with its value: an operator told that an enum grew from 3 to 4 has
+        # not been told the one thing the prompt exists to say. Positional is
+        # the honest rendering of a JSON array, whose order is significant; an
+        # insertion in the middle reads as each later element moving plus one
+        # added at the end, which is what a validator sees too.
+        for index in range(max(len(before), len(after))):
+            child = f"{path}[{index}]"
+            if index >= len(before):
+                out.append(f"+ {child} = {_render(after[index])}")
+            elif index >= len(after):
+                out.append(f"- {child} (was {_render(before[index])})")
+            else:
+                _walk(before[index], after[index], child, out)
         return
 
     if before != after:

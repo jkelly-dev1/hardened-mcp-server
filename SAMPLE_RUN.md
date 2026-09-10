@@ -7,7 +7,8 @@ The capture is byte-identical between runs. No timestamps, no durations, no
 process ids, no sampling, no network. `scripts/run_demo.py` twice in a row
 produces two identical files, which is what makes this checkable rather than
 merely readable. A reader who runs it and gets different bytes has found a bug,
-and one who gets the same bytes has verified the page.
+and one who gets the same bytes has verified the page. CI does the same
+comparison on every push, with `scripts/check_sample_run.py`.
 
 The three legs are produced by one command:
 
@@ -59,8 +60,9 @@ pytest -q -rs
 ```
 
 ```
-..................................................................       [100%]
-66 passed in 1.74s
+........................................................................ [ 86%]
+...........                                                              [100%]
+83 passed in 2.10s
 ```
 
 ---

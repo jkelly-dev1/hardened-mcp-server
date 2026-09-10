@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from pin import corpus
-from pin.identity import from_http_origin, from_stdio_command
+from pin.identity import from_http_origin, from_self_reported_name, from_stdio_command
 from pin.models import RECOMMENDED, Verdict
 from pin.store import PinStore
 
@@ -78,12 +80,44 @@ def test_a_pin_does_not_transfer_to_another_server() -> None:
 
 
 def test_identities_from_different_sources_never_unify() -> None:
-    """A launch command and a URL are not the same kind of claim."""
+    """A launch command and a URL are not the same kind of claim.
+
+    The second half is the one that can tell: two identities with the SAME
+    value and different sources. A key built from the value alone unifies
+    them; a key that carries the source does not. The first half, whose two
+    values differ anyway, passes either way and proves nothing on its own.
+    """
     store = PinStore(RECOMMENDED)
     tool = corpus.by_name("export_records")
     http = from_http_origin("https://acme.example.net/mcp")
     store.approve(http, tool, approved_by="operator")
     assert store.observe(SERVER, tool).verdict is Verdict.UNPINNED
+
+    claimed = from_self_reported_name(SERVER.value)
+    assert claimed.value == SERVER.value
+    assert claimed.key != SERVER.key
+    store.approve(claimed, tool, approved_by="operator")
+    assert store.observe(SERVER, tool).verdict is Verdict.UNPINNED
+
+
+def test_approval_keeps_its_own_copy_of_the_definition() -> None:
+    """The pin records what was approved, not a live view of the caller's dict.
+
+    The caller's object is edited underneath the pin, nested, after approval.
+    The entry still holds the approved bytes, so the verdict is CHANGED and
+    the diff names the field. A record sharing structure with the caller
+    would report a change and have nothing to show for it.
+    """
+    store = PinStore(RECOMMENDED)
+    tool = corpus.by_name("export_records")
+    store.approve(SERVER, tool, approved_by="operator")
+    tool["inputSchema"]["properties"]["export_token"]["x-mcp-header"] = "Token"
+    result = store.check(SERVER, tool)
+    assert result.verdict is Verdict.CHANGED
+    assert any("x-mcp-header" in line for line in result.diff)
+    entry = store.entry(SERVER, "export_records")
+    assert entry is not None
+    assert "x-mcp-header" not in json.dumps(entry.definition)
 
 
 def test_check_does_not_mutate_the_store() -> None:

@@ -50,11 +50,18 @@ async def test_the_client_reads_a_real_tool_list_over_stdio() -> None:
 async def test_the_raw_path_preserves_a_key_the_typed_api_would_drop() -> None:
     """The reason `raw_tool_list` does not call `Client.list_tools()`.
 
-    `mcp_types.Tool` is declared `extra="ignore"`. A client that fingerprints
-    parsed models fingerprints a view with this key already removed, computes a
-    matching digest, and is correct about the wrong bytes.
+    `mcp_types.Tool` leaves pydantic's `extra` setting at its default, `ignore`.
+    A client that fingerprints parsed models fingerprints a view with this key
+    already removed, computes a matching digest, and is correct about the wrong
+    bytes.
     """
     from mcp_types import Tool
+
+    # The attribution above, checked against the type rather than assumed:
+    # the drop comes from pydantic's default and not from a setting `Tool`
+    # declares. An SDK that starts declaring one fails here, where the
+    # sentence that would then be wrong lives.
+    assert Tool.model_config.get("extra") is None
 
     tools = await _listing(rogue_args("--mutation", "unknown_field_plant"))
     planted = next(t for t in tools if t["name"] == "ticket_lookup")

@@ -7,8 +7,8 @@ a description of what a server would send.
 
 WHY IT DOES NOT USE `Client.list_tools()`, which is the obvious call. That
 method returns `ListToolsResult`, whose `tools` are `mcp_types.Tool` instances,
-and `Tool` is declared with `ConfigDict(extra="ignore")`. Any top-level key the
-schema does not name is gone before the caller sees it. Fingerprinting those
+and `Tool` leaves pydantic's `extra` setting at its default, `ignore`. Any
+top-level key the schema does not name is gone before the caller sees it. Fingerprinting those
 objects therefore fingerprints a view with an entire class of content already
 filtered out. The client would compute a digest, compare it, find it equal, and
 be correct about the wrong bytes.
@@ -88,9 +88,20 @@ class PinningClient:
         to one server and the store is keyed by identity, so shadowing is
         resolved by the key rather than by anything this method does. See
         `pin/shadow.py`.
+
+        The listing is checked as a whole before any entry in it is gated.
+        Every entry must carry a name, and no name may appear twice: a gate is
+        keyed by name and holds one entry per name, so a listing that repeats
+        one would let the server choose, by ordering, which definition the
+        gate describes and which one a call proceeds on. A nameless entry has
+        nothing to gate and nothing to pin. Either refuses the WHOLE listing
+        rather than the offending entry, because a server that produces one
+        is not a server whose remaining entries are trusted by default.
         """
+        listing = await self.raw_tool_list()
+        _refuse_ambiguous(listing)
         gates: dict[str, ToolGate] = {}
-        for definition in await self.raw_tool_list():
+        for definition in listing:
             result = self.store.observe(self.identity, definition)
             gates[result.tool] = ToolGate(check=result, findings=scan(definition))
         return gates
@@ -117,10 +128,31 @@ class PinningClient:
         return await self._session.call_tool(name, arguments)
 
 
+def _refuse_ambiguous(listing: list[dict[str, Any]]) -> None:
+    """Raise unless every entry has a name and every name appears once."""
+    seen: set[str] = set()
+    for definition in listing:
+        name = definition.get("name")
+        if not isinstance(name, str) or not name:
+            raise PermissionError("listing refused: an offered tool has no name")
+        if name in seen:
+            raise PermissionError(f"listing refused: {name} is offered more than once")
+        seen.add(name)
+
+
 def _explain(check: CheckResult) -> str:
     if check.verdict is Verdict.UNPINNED:
         return "no approval on file for this server and tool"
     if check.verdict is Verdict.CHANGED:
+        if not check.diff:
+            # A digest that moved while no field value did: the change is in
+            # the encoding, which a RAW policy hashes. Said outright, since a
+            # sentence ending at a colon reads as a truncated report.
+            return (
+                "definition changed since approval; no field value differs, so "
+                "the change is in the encoding (key order or serialization), "
+                f"which {check.policy.label} hashes"
+            )
         head = "; ".join(check.diff[:3])
         more = f" (+{len(check.diff) - 3} more)" if len(check.diff) > 3 else ""
         return f"definition changed since approval: {head}{more}"

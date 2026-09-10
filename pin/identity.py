@@ -70,6 +70,11 @@ def from_stdio_command(command: str, args: tuple[str, ...] = ()) -> ServerIdenti
     return ServerIdentity(value=rendered, source="stdio-command")
 
 
+#: The port a scheme implies when the URL names none. An explicit `:443` on
+#: https names the same origin as no port at all, and is dropped so it does.
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
 def from_http_origin(url: str) -> ServerIdentity:
     """Identity of a Streamable HTTP server: scheme, host and port.
 
@@ -77,14 +82,24 @@ def from_http_origin(url: str) -> ServerIdentity:
     boundary, because whoever controls the origin controls both. Including the
     path would let a server split itself into apparently distinct identities
     and collect a separate first-use approval for each.
+
+    Only the origin enters the key, spelled one way. An explicit default port
+    is the same origin as none; userinfo names a credential, not a server. Both
+    are dropped, so the several spellings of one origin are one key and no
+    secret pasted into a URL is carried into a pin.
     """
     parts = urlsplit(url)
-    if not parts.scheme or not parts.netloc:
+    host = parts.hostname  # lowercased, userinfo and port stripped
+    if not parts.scheme or not host:
         raise ValueError(f"not an absolute URL: {url!r}")
-    return ServerIdentity(
-        value=f"{parts.scheme}://{parts.netloc}".lower(),
-        source="http-origin",
-    )
+    scheme = parts.scheme.lower()
+    port = parts.port  # raises ValueError on a port that is not a number
+    if ":" in host:
+        host = f"[{host}]"  # an IPv6 literal, whose brackets `hostname` strips
+    origin = f"{scheme}://{host}"
+    if port is not None and port != _DEFAULT_PORTS.get(scheme):
+        origin = f"{origin}:{port}"
+    return ServerIdentity(value=origin, source="http-origin")
 
 
 def from_self_reported_name(server_info_name: str) -> ServerIdentity:

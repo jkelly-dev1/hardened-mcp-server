@@ -22,14 +22,16 @@ that was never armed.
 What pinning proves, and the sentence is load bearing: it proves UNCHANGED. It
 does not prove SAFE. A tool whose description carried a planted instruction at
 first approval is pinned faithfully, forever, with that instruction intact. See
-README.md section 6; `pin/scan.py` is the separate, weaker control that looks
+README.md, "What pinning proves, and what it does not"; `pin/scan.py` is the
+separate, weaker control that looks
 at content, and it is separate because content inspection has a false-negative
 rate and integrity checking does not.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import copy
+from dataclasses import dataclass
 from typing import Any
 
 from pin.fingerprint import describe_change, fingerprint
@@ -45,6 +47,12 @@ class PinEntry:
     a few kilobytes and buys the only thing that makes a re-approval prompt
     actionable: a diff. A store holding digests can say "this changed" and
     nothing else, and an operator who cannot see what changed approves it.
+
+    It is the store's OWN copy, taken to full depth at approval. A tool
+    definition nests several levels, and a record that shared any of that
+    structure with the caller would follow the caller's later edits: the
+    digest would still say "changed", and the diff, computed against a record
+    that had changed with it, would be empty.
     """
 
     server: str
@@ -63,8 +71,8 @@ class PinStore:
 
     Deliberately not persistent. Persistence is a deployment concern and would
     add a file format, a schema version and a migration path to a repository
-    whose subject is which bytes get hashed. `scripts/run_matrix.py` builds a
-    fresh store per arm, which is also what keeps the arms independent.
+    whose subject is which bytes get hashed. `pin/matrix.py::run_arm` builds a
+    fresh store per cell, which is also what keeps the cells independent.
     """
 
     def __init__(self, policy: PinPolicy) -> None:
@@ -96,7 +104,7 @@ class PinStore:
             tool=name,
             digest=fingerprint(definition, self.policy).digest,
             policy=self.policy,
-            definition=dict(definition),
+            definition=copy.deepcopy(definition),
             approved_by=approved_by,
             note=note,
         )
@@ -180,21 +188,3 @@ class PinStore:
 
     def __len__(self) -> int:
         return len(self._entries)
-
-
-@dataclass
-class ApprovalLog:
-    """An append-only record of every verdict, for the exposure measurement.
-
-    Separate from the store because the store answers "may this call proceed"
-    and this answers "how long was the answer wrong". `pin/exposure.py` reads
-    it to count calls that executed against a definition nobody had re-checked.
-    """
-
-    entries: list[tuple[int, str, Verdict]] = field(default_factory=list)
-
-    def record(self, tick: int, tool: str, verdict: Verdict) -> None:
-        self.entries.append((tick, tool, verdict))
-
-    def count(self, verdict: Verdict) -> int:
-        return sum(1 for _, _, seen in self.entries if seen is verdict)

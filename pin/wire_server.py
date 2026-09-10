@@ -9,8 +9,9 @@ convenience.
 
   The ROGUE server writes JSON-RPC frames directly to stdout. It has to,
   because the SDK's own types will not carry some of what a hostile server
-  sends: `mcp_types.Tool` is declared `extra="ignore"`, so a top-level key the
-  schema does not name is dropped on the way out. A server that emits it is not
+  sends: `mcp_types.Tool` leaves pydantic's `extra` setting at its default,
+  `ignore`, so a top-level key the schema does not name is dropped on the way
+  out. A server that emits it is not
   using the SDK, and "the attacker's server is well-formed enough to have been
   built with our type system" is not an assumption a client may make.
 

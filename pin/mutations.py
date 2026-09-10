@@ -145,8 +145,10 @@ def _a5_remote_schema_edit(tool: dict[str, Any]) -> dict[str, Any]:
 
     A mutation that SWAPS a local `$defs` for an external `$ref` looks like it
     should defeat every policy. It does not: replacing a subschema with a URL
-    is a plain byte change, and eight of the sixteen policies catch it
-    immediately. That claim survives writing and does not survive running.
+    is a plain byte change, and ten of the twenty policies catch it
+    immediately: every declared/* and every wire/*, the ten whose field set
+    reaches the schema. `tests/test_matrix.py` derives that count. The claim
+    survives writing and does not survive running.
     """
     return tool
 
@@ -187,8 +189,8 @@ def _a7_display_swap(tool: dict[str, Any]) -> dict[str, Any]:
 def _a8_unknown_field_plant(tool: dict[str, Any]) -> dict[str, Any]:
     """Add a top-level key the SDK's `Tool` model discards at parse time.
 
-    `mcp_types.Tool` is declared with `ConfigDict(extra="ignore")`, so this key
-    is gone before any code holding a parsed model can see it. Whether it
+    `mcp_types.Tool` leaves pydantic's `extra` setting at its default, `ignore`,
+    so this key is gone before any code holding a parsed model can see it. Whether it
     reaches the model depends on how the host serializes the tool list into the
     prompt, which the protocol does not constrain, and a host that forwards the
     raw listing forwards this.
@@ -313,7 +315,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         rationale=(
             "Leaves the definition byte-identical, so every policy reports "
             "MATCH and every one of them is wrong. In the corpus to be missed "
-            "by all sixteen: a measurement whose every cell is winnable by "
+            "by all twenty: a measurement whose every cell is winnable by "
             "some policy measures the policies, not the technique."
         ),
         apply=_a5_remote_schema_edit,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pin import matrix
+from pin import corpus, matrix
 from pin.models import (
     INTUITIVE,
     POLICY_GRID,
@@ -12,8 +12,10 @@ from pin.models import (
     Canonicalization,
     FieldSet,
     PinPolicy,
+    Verdict,
 )
 from pin.mutations import ADVERSARIAL, BENIGN, MUTATIONS
+from pin.store import PinStore
 
 
 @pytest.fixture(scope="module")
@@ -97,6 +99,57 @@ def test_the_header_mirroring_change_is_invisible_to_the_reviewed_surface(result
     """Named on its own because it is the case the project is built around."""
     assert "header_exfil" in arm(results, INTUITIVE).missed_keys()
     assert "header_exfil" not in arm(results, RECOMMENDED).missed_keys()
+
+
+def test_the_reviewed_surface_misses_six_changes_that_the_wire_catches(results) -> None:
+    """The sentence under the grid in README.md, derived rather than typed.
+
+    `reviewed/text_folded` misses seven of eight and `wire/semantic` misses
+    one, so the difference is six. It is six and not five because
+    `trojan_source` is in it: that change is in the description a reviewer IS
+    shown, and folding deletes exactly the characters it adds, while the
+    other five are in fields the reviewer never sees.
+    """
+    intuitive = arm(results, INTUITIVE)
+    recommended = arm(results, RECOMMENDED)
+    assert intuitive.missed == 7
+    assert set(intuitive.missed_keys()) - set(recommended.missed_keys()) == {
+        "header_exfil",
+        "schema_widening",
+        "annotation_flip",
+        "display_swap",
+        "unknown_field_plant",
+        "trojan_source",
+    }
+
+
+def test_swapping_a_local_defs_for_an_external_ref_is_caught_by_ten_of_twenty() -> None:
+    """The figure in `_a5_remote_schema_edit`'s docstring, derived.
+
+    Replacing search_kb's `$defs` entry with an external `$ref` is a plain
+    byte change inside `inputSchema`, so every policy whose field set reaches
+    the schema fires: all five declared/* and all five wire/*. The ten that
+    hash only the name or the reviewed text stay silent.
+    """
+    original = corpus.by_name("search_kb")
+    swapped = corpus.by_name("search_kb")
+    schema = swapped["inputSchema"]
+    del schema["$defs"]
+    for prop in ("published", "updated"):
+        schema["properties"][prop] = {
+            "$ref": "https://schemas.example.net/support/date-range.json"
+        }
+
+    caught: set[str] = set()
+    for policy in POLICY_GRID:
+        store = PinStore(policy)
+        store.approve(matrix.SERVER, original, approved_by="operator")
+        if store.check(matrix.SERVER, swapped).verdict is Verdict.CHANGED:
+            caught.add(policy.label)
+    assert len(caught) == 10
+    assert caught == {
+        p.label for p in POLICY_GRID if p.fields in (FieldSet.DECLARED, FieldSet.WIRE)
+    }
 
 
 def test_only_the_wire_field_set_sees_a_planted_unknown_key(results) -> None:

@@ -127,9 +127,13 @@ of eight, and it is perfectly quiet while doing so. A control with a clean
 false-alarm record and a 12% detection rate is the worst possible thing to
 deploy, because nothing about operating it feels wrong.
 
-The five it misses that `wire/semantic` catches: `header_exfil`,
-`schema_widening`, `annotation_flip`, `display_swap`, `unknown_field_plant`.
-Every one of them is a change to a field the reviewer was never shown.
+The six it misses that `wire/semantic` catches: `header_exfil`,
+`schema_widening`, `annotation_flip`, `display_swap`, `unknown_field_plant`,
+`trojan_source`. Five of them are changes to fields the reviewer was never
+shown. The sixth is in the description itself: folding deletes exactly the
+characters it adds, so the policy that folds cannot see it. The six are
+derived from the grid by
+`tests/test_matrix.py::test_the_reviewed_surface_misses_six_changes_that_the_wire_catches`.
 
 ## The finding: "normalize before hashing" is two operations, not one
 
@@ -258,9 +262,10 @@ connection's payload.
 ## Leg 4: does the model actually read the fields the pin misses?
 
 The three legs above are integrity measurements. They establish that a
-description-only pin misses five changes and that a reviewer is not shown them.
-They cannot establish whether those changes move the agent, that is a question
-about a model, and no amount of hashing answers it.
+description-only pin misses seven of eight changes, and that five of those are
+changes to fields a reviewer is never shown. They cannot establish whether
+those changes move the agent, that is a question about a model, and no amount
+of hashing answers it.
 
 The capture is 120 calls: 60 against `claude-opus-5` and the same 60 against
 `gpt-5.6-terra`, both at low effort. Five mutations, each with its own paired
@@ -423,8 +428,9 @@ an exact check with a heuristic one produces a single status nobody can act on.
 
 ## A finding about the SDK, not a complaint about it
 
-`mcp_types.Tool` is declared `ConfigDict(extra="ignore")`. An undeclared
-top-level key is discarded at parse time, so:
+`mcp_types.Tool` declares no `extra` setting of its own, so pydantic's default,
+`ignore`, applies: an undeclared top-level key is discarded at parse time.
+Therefore:
 
 - `Client.list_tools()` cannot see it. A client fingerprinting parsed models
   computes a matching digest and is correct about the wrong bytes. This repo's
@@ -477,6 +483,14 @@ fails a test rather than silently invalidating a claim on this page.
 | A name-bound pin is handed to an impersonator | `tests/test_exposure_and_shadow.py::test_a_pin_bound_to_the_self_reported_name_is_handed_to_an_imposter` |
 | A command-bound pin refuses the impersonator | `tests/test_exposure_and_shadow.py::test_a_pin_bound_to_the_host_launch_command_refuses_the_imposter` |
 | The impersonator's bytes are indistinguishable | `tests/test_exposure_and_shadow.py::test_the_imposter_serves_bytes_a_fingerprint_cannot_distinguish` |
+| The leg-2 table is what the arms produce, every column | `tests/test_exposure_and_shadow.py::test_the_leg_2_table_in_the_readme_is_what_the_arms_produce` (mutation-checked) |
+| The reviewed surface misses six changes that the wire catches | `tests/test_matrix.py::test_the_reviewed_surface_misses_six_changes_that_the_wire_catches` |
+| An identity's source is part of its key | `tests/test_store.py::test_identities_from_different_sources_never_unify` (mutation-checked) |
+| An approval keeps its own copy of the definition | `tests/test_store.py::test_approval_keeps_its_own_copy_of_the_definition` |
+| A listing that repeats a name, or carries a nameless entry, is refused whole | `tests/test_wire_client.py::test_a_listing_that_offers_one_name_twice_is_refused_whole` |
+| An appended list element is shown, not counted | `tests/test_fingerprint.py::test_an_appended_list_element_is_shown_not_counted` |
+| One origin has one key, however the URL spells it | `tests/test_identity.py::test_one_origin_has_one_key_however_the_url_spells_it` |
+| The gate block in `SAMPLE_RUN.md` is what the gate prints | `tests/test_sample_run.py::test_the_gate_capture_in_sample_run_is_what_the_gate_prints_today` |
 
 Leg 4 is a paid capture against a real model and is therefore not in this table:
 it is evidence, not an invariant, and a test that re-ran it would cost money on
@@ -489,7 +503,7 @@ and exits 1 on a fresh clone with nothing to score.
 
 ```sh
 python -m pin.gate           # 9 checks, offline, no dependencies
-pytest -q -rs                # 68 tests; protocol tests skip without the SDK
+pytest -q -rs                # 83 tests; protocol tests skip without the SDK
 python scripts/run_demo.py   # all three legs; --matrix for the offline one
 ```
 
@@ -510,7 +524,10 @@ transcripts carry the path and never the key.
 
 `SAMPLE_RUN.md` holds the full capture verbatim. Output is byte-identical
 between runs, no timestamps, no durations, no sampling, so a reader can
-reproduce it exactly rather than take a screenshot on faith.
+reproduce it exactly rather than take a screenshot on faith. CI does that
+reproduction on every push: `scripts/check_sample_run.py` diffs the page's
+gate block and three-leg block against a fresh run and fails on any
+difference.
 
 ## Recommended policy
 

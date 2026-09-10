@@ -30,13 +30,19 @@ from typing import Any
 
 from pin.models import Canonicalization, FieldSet
 
-#: Fields the 2026-07-28 `Tool` type declares. Ordering is irrelevant, this is
+#: Every field the SDK's `Tool` type declares. Ordering is irrelevant, this is
 #: a membership test, but it is kept alphabetical so a spec revision that adds
 #: a field is a one-line diff a reviewer can check against the schema.
+#:
+#: That diff is not left to a reviewer to remember: it is pinned against
+#: mcp.types.Tool by tests/test_canonical.py, which fails and names the field
+#: when the SDK adds one. Add it here, then decide deliberately whether the new
+#: field also belongs in REVIEWED_FIELDS.
 DECLARED_FIELDS: frozenset[str] = frozenset(
     {
         "annotations",
         "description",
+        "execution",
         "icons",
         "inputSchema",
         "name",
@@ -248,7 +254,8 @@ def _resolve_refs(value: Any) -> Any:
     quietly treating them as stable. The only real answer is a client that
     REFUSES to pin a schema it cannot fully resolve, which is a policy
     decision this module surfaces and does not make; see
-    `pin/scan.py::unresolvable_refs` and README.md section 6.
+    `pin/scan.py::unresolvable_refs` and README.md, "The ceiling, and why it
+    is a property of the technique".
 
     Resolution scope is the part that is easy to get wrong, and getting it
     wrong fails silently in both directions. A `$ref` of `#/$defs/P` inside a
@@ -302,12 +309,45 @@ def resolve_schema(schema: dict[str, Any]) -> Any:
     return _inline(schema, schema, (), 0)
 
 
-def _inline(node: Any, root: dict[str, Any], seen: tuple[str, ...], depth: int) -> Any:
+def _referenced_subschemas(root: dict[str, Any]) -> set[int]:
+    """Identities of the subschemas some local `$ref` in this document resolves to.
+
+    Tells a hoisted entry from a planted one. Hoisting a repeated subschema
+    into `$defs` and pointing `$ref` at it is the rewrite this level forgives,
+    and such an entry is by construction referenced. An entry nothing
+    references is not part of that rewrite, and its text still reaches a model.
+
+    Identity rather than pointer strings, so a `$ref` written any of the ways
+    JSON Pointer permits still marks its target.
+    """
+    found: set[int] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str):
+                target = _dereference(ref, root)
+                if target is not None:
+                    found.add(id(target))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(root)
+    return found
+
+
+def _inline(node: Any, root: dict[str, Any], seen: tuple[str, ...], depth: int,
+            referenced: set[int] | None = None) -> Any:
+    if referenced is None:
+        referenced = _referenced_subschemas(root)
     if depth > _MAX_REF_DEPTH:
         return _depth_marker(node)
 
     if isinstance(node, list):
-        return [_inline(item, root, seen, depth + 1) for item in node]
+        return [_inline(item, root, seen, depth + 1, referenced) for item in node]
 
     if not isinstance(node, dict):
         return node
@@ -325,7 +365,7 @@ def _inline(node: Any, root: dict[str, Any], seen: tuple[str, ...], depth: int) 
             # schema this process never saw.
             resolved: Any = {"$ref": ref, "$pin": _UNRESOLVED_MARKER}
         else:
-            resolved = _inline(target, root, seen + (ref,), depth + 1)
+            resolved = _inline(target, root, seen + (ref,), depth + 1, referenced)
         # Draft 2020-12 allows $ref to carry siblings, and the siblings apply
         # on top of the target. Merge in that direction.
         siblings = {k: v for k, v in node.items() if k != "$ref"}
@@ -333,20 +373,34 @@ def _inline(node: Any, root: dict[str, Any], seen: tuple[str, ...], depth: int) 
             return resolved
         if isinstance(resolved, dict):
             merged = dict(resolved)
-            merged.update(_inline(siblings, root, seen, depth + 1))
+            merged.update(_inline(siblings, root, seen, depth + 1, referenced))
             return merged
-        return {"$pin:target": resolved, **_inline(siblings, root, seen, depth + 1)}
+        return {"$pin:target": resolved, **_inline(siblings, root, seen, depth + 1, referenced)}
 
     # `$defs` and `definitions` hold subschemas that exist only to be
-    # referenced. Once every reference is inlined they are unreachable, and
-    # keeping them would make the hoisted rewrite differ from the original:
-    # the exact false alarm this level removes. An unreferenced entry is dead
-    # weight in the schema too, so dropping it loses nothing that validates.
-    return {
-        key: _inline(sub, root, seen, depth + 1)
-        for key, sub in node.items()
-        if key not in ("$defs", "definitions")
-    }
+    # referenced. Once a reference is inlined its entry is unreachable, and
+    # keeping it would make a hoisted rewrite differ from the original: the
+    # exact false alarm this level removes.
+    #
+    # ONLY THE REFERENCED ENTRIES ARE DROPPED. Text in an entry nothing points
+    # at is still in the bytes the server sends, so a model still reads it:
+    # dead weight to a validator is live text to an LLM. Dropping only what a
+    # `$ref` resolved to keeps the whole benefit and pays none of that price,
+    # because a hoisted entry is by construction referenced. Both halves are
+    # pinned by tests/test_canonical.py.
+    out: dict[str, Any] = {}
+    for key, sub in node.items():
+        if key in ("$defs", "definitions") and isinstance(sub, dict):
+            kept = {
+                name: _inline(entry, root, seen, depth + 1, referenced)
+                for name, entry in sub.items()
+                if id(entry) not in referenced
+            }
+            if kept:
+                out[key] = kept
+            continue
+        out[key] = _inline(sub, root, seen, depth + 1, referenced)
+    return out
 
 
 def _dereference(ref: str, root: dict[str, Any]) -> Any | None:
