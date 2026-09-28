@@ -23,9 +23,8 @@ What pinning proves, and the sentence is load bearing: it proves UNCHANGED. It
 does not prove SAFE. A tool whose description carried a planted instruction at
 first approval is pinned faithfully, forever, with that instruction intact. See
 README.md, "What pinning proves, and what it does not"; `pin/scan.py` is the
-separate, weaker control that looks
-at content, and it is separate because content inspection has a false-negative
-rate and integrity checking does not.
+separate, weaker control that looks at content, and it is separate because
+content inspection has a false-negative rate and integrity checking does not.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ class PinEntry:
 
     `definition` is the full raw object, not just its digest. Keeping it costs
     a few kilobytes and buys the only thing that makes a re-approval prompt
-    actionable: a diff. A store holding digests can say "this changed" and
+    something to act on: a diff. A store holding digests can say "this changed" and
     nothing else, and an operator who cannot see what changed approves it.
 
     It is the store's OWN copy, taken to full depth at approval. A tool
@@ -69,10 +68,10 @@ class PinEntry:
 class PinStore:
     """In-memory pin registry for one host.
 
-    Deliberately not persistent. Persistence is a deployment concern and would
-    add a file format, a schema version and a migration path to a repository
-    whose subject is which bytes get hashed. `pin/matrix.py::run_arm` builds a
-    fresh store per cell, which is also what keeps the cells independent.
+    Not persistent. Persistence is a deployment concern and would add a file
+    format, a schema version and a migration path to a repository whose subject
+    is which bytes get hashed. `pin/matrix.py::run_arm` builds a fresh store
+    per cell, which is also what keeps the cells independent.
     """
 
     def __init__(self, policy: PinPolicy) -> None:
@@ -146,6 +145,23 @@ class PinStore:
             )
 
         observed = fingerprint(definition, self.policy)
+        held = self._quarantined.get((identity.key, name))
+        if observed.digest == entry.digest and held is not None:
+            # Quarantine ends at approve() and nowhere else. A server that
+            # serves the approved definition again after changing it has not
+            # earned the call back: otherwise flipping back and forth would
+            # leave the quarantine purely advisory. Read-only: check() still
+            # records nothing.
+            return CheckResult(
+                tool=name,
+                verdict=Verdict.CHANGED,
+                policy=self.policy,
+                pinned_digest=entry.digest,
+                observed_digest=observed.digest,
+                diff=["quarantined since the definition moved "
+                      f"({held.observed_digest}); it is back to the approved "
+                      "one, and approve() is still required"],
+            )
         if observed.digest == entry.digest:
             return CheckResult(
                 tool=name,
@@ -173,7 +189,14 @@ class PinStore:
         """
         result = self.check(identity, definition)
         if result.verdict is Verdict.CHANGED:
-            self._quarantined[(identity.key, result.tool)] = result
+            key = (identity.key, result.tool)
+            # Serving the approved definition again is still CHANGED, but it
+            # is not a new change. The record already held names what moved
+            # and where it moved to; replacing it would leave the operator a
+            # sentence and the approved digest to review instead.
+            if not (key in self._quarantined
+                    and result.observed_digest == result.pinned_digest):
+                self._quarantined[key] = result
         return result
 
     # ------------------------------------------------------------------ #

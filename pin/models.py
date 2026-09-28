@@ -60,8 +60,9 @@ class FieldSet(str, Enum):
 
     DECLARED = "declared"
     """Every field the 2026-07-28 `Tool` model declares: name, title,
-    description, inputSchema, outputSchema, annotations, icons. This is the
-    honest answer to "pin the tool definition"."""
+    description, inputSchema, outputSchema, annotations, icons, execution and
+    _meta (canonical.DECLARED_FIELDS). This is the literal answer to "pin the
+    tool definition"."""
 
     WIRE = "wire"
     """The entire JSON object as it arrived, including keys the SDK's `Tool`
@@ -81,8 +82,8 @@ class Canonicalization(str, Enum):
 
     Read the module docstring first. RAW and STRUCTURAL are in one family;
     TEXT_FOLDED is in the other; SEMANTIC returns to the first. The ladder is
-    deliberately NOT ordered by strength, because it is not a strength
-    ordering, that is the finding.
+    NOT ordered by strength, because it is not a strength ordering, that is the
+    finding.
     """
 
     RAW = "raw"
@@ -108,8 +109,8 @@ class Canonicalization(str, Enum):
     normal form, WITHOUT text folding.
 
     Accepts a schema rewritten through `$defs` that validates identically, at
-    no cost to any detection. Deliberately NOT a superset of TEXT_FOLDED: the
-    safe normalizations and the unsafe one are separable, and a policy can
+    no cost to any detection. NOT a superset of TEXT_FOLDED: the safe
+    normalizations and the unsafe one are separable, and a policy can
     take every one of the first family and none of the second."""
 
     SEMANTIC_FOLDED = "semantic_folded"
@@ -117,7 +118,7 @@ class Canonicalization(str, Enum):
     knows how to do.
 
     Present because it is the obvious question and it deserves a number rather
-    than an argument. It is the quietest policy on the grid, the only one that
+    than an argument. It raises the fewest alarms on the grid, the only one that
     reaches zero false alarms with a wide field set, and it buys that silence
     with exactly one detection. Whether that is a good trade is a deployment's
     decision and not this repository's; what the measurement can do is put the
@@ -214,9 +215,8 @@ class CheckResult:
     def may_call(self) -> bool:
         """Only a MATCH authorizes a call without a fresh human decision.
 
-        UNPINNED is deliberately not callable. A store that pins on first sight
-        and proceeds has converted an approval into a formality, and every
-        measurement in this repository would then be describing a control that
-        never says no.
+        UNPINNED is not callable. A store that pins on first sight and proceeds
+        has converted an approval into a formality, and every measurement in
+        this repository would then be describing a control that never says no.
         """
         return self.verdict is Verdict.MATCH

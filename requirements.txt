@@ -1,6 +1,6 @@
-# The measurement layer imports nothing outside the standard library. Every
-# number in README.md's grid comes from `python -m pin.gate`, which runs on
-# a bare Python install -- hashing, JSON canonicalization, $ref resolution and
+# The measurement layer imports nothing outside the standard library. The
+# README grid comes from pin/matrix.py, which `python -m pin.gate` re-derives
+# on a bare Python install -- hashing, JSON canonicalization, $ref resolution and
 # NFKC folding are all written out here rather than delegated, so a reader can
 # follow what was hashed without reading a dependency.
 pytest>=8,<10

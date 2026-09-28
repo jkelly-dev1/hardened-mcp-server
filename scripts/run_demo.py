@@ -8,7 +8,7 @@ standard library. The exposure and shadow legs launch real MCP servers as
 subprocesses and speak the protocol to them over stdio, so they need the `mcp`
 SDK installed; they are skipped with a stated reason if it is not.
 
-Output is byte-identical between runs, on purpose. No timestamps, no durations,
+Output is byte-identical between runs. No timestamps, no durations,
 no process ids, no sampling. `SAMPLE_RUN.md` holds this text verbatim, and a
 capture a reader cannot reproduce exactly is a screenshot.
 """
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import sys
 from pathlib import Path
 
@@ -66,9 +67,12 @@ async def leg_exposure() -> None:
     from pin import exposure
 
     print(rule("LEG 2: THE SERVER CHOOSES HOW LONG THE PIN STAYS UNCHECKED"))
+    arm = inspect.signature(exposure.run_arm).parameters
     print(
         "\nA server that rug-pulls after the client has trusted it once. "
-        f"12 calls, 30s apart on an injected clock, server ttlMs = 300000.\n"
+        f"{arm['calls'].default} simulated calls, "
+        f"{arm['interval_ms'].default // 1000}s apart on an injected clock, "
+        f"server ttlMs = {arm['server_ttl_ms'].default}.\n"
         f"The SDK clamps any inbound hint to {exposure.SDK_MAX_TTL_MS} ms "
         f"({exposure.SDK_MAX_TTL_MS // 3_600_000} hours).\n"
     )

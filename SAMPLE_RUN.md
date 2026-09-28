@@ -3,12 +3,13 @@
 Verbatim output. Nothing here is retyped, reformatted or trimmed, and nothing
 is a screenshot.
 
-The capture is byte-identical between runs. No timestamps, no durations, no
+The capture is byte-identical between runs, except the test suite's last line,
+where pytest prints how long it took. No timestamps, no other durations, no
 process ids, no sampling, no network. `scripts/run_demo.py` twice in a row
-produces two identical files, which is what makes this checkable rather than
-merely readable. A reader who runs it and gets different bytes has found a bug,
-and one who gets the same bytes has verified the page. CI does the same
-comparison on every push, with `scripts/check_sample_run.py`.
+produces two identical files, so a reader can check the page by running it.
+A reader who runs it and gets different bytes has found a bug, and one who gets
+the same bytes has verified the page. CI does the same comparison on every
+push, with `scripts/check_sample_run.py`.
 
 The three legs are produced by one command:
 
@@ -28,7 +29,7 @@ Environment for this capture: Python 3.13, `mcp` 2.0.0, protocol revision
 ## The offline gate
 
 Nine checks over the numbers that appear in `README.md`. This is the one that
-fails when a refactor leaves every test green and quietly makes the page wrong.
+fails when a refactor leaves every test green and silently makes the page wrong.
 
 ```sh
 python -m pin.gate
@@ -53,16 +54,16 @@ python -m pin.gate
 ## The test suite
 
 `-rs` prints skip reasons, so a green run shows which tests skipped and
-why rather than looking like full coverage.
+why instead of looking like full coverage.
 
 ```sh
 pytest -q -rs
 ```
 
 ```
-........................................................................ [ 86%]
-...........                                                              [100%]
-83 passed in 2.10s
+........................................................................ [ 52%]
+.................................................................        [100%]
+137 passed in 3.14s
 ```
 
 ---
@@ -220,7 +221,7 @@ wire/semantic_folded
 LEG 2: THE SERVER CHOOSES HOW LONG THE PIN STAYS UNCHECKED
 ==============================================================================
 
-A server that rug-pulls after the client has trusted it once. 12 calls, 30s apart on an injected clock, server ttlMs = 300000.
+A server that rug-pulls after the client has trusted it once. 12 simulated calls, 30s apart on an injected clock, server ttlMs = 300000.
 The SDK clamps any inbound hint to 86400000 ms (24 hours).
 
 freshness policy     ttl used  listings  exposed  refused  detected after
@@ -259,7 +260,8 @@ canonicalization changes this answer.
 ## Leg 4: the paid capture
 
 This is 60 calls against `claude-opus-5`. It costs money, so it is not part of
-`run_demo.py` and not in CI. Re-scoring the committed outcomes is free:
+`run_demo.py` and not in CI. Re-scoring the outcomes of a run you have made
+yourself is free (the raw JSON is gitignored, so a fresh clone has none):
 
 ```sh
 python scripts/real_run.py --report

@@ -16,7 +16,7 @@ OTHER = from_stdio_command("python", ("-m", "other"))
 
 
 def test_an_unpinned_tool_is_not_callable() -> None:
-    """Trust on first use is a decision, not a default.
+    """Trust on first use is a decision the operator makes.
 
     A store that pinned whatever it saw first would have an approval step that
     cannot say no, and every detection number in README.md would be measured
@@ -52,6 +52,22 @@ def test_a_changed_definition_is_quarantined_not_blocked() -> None:
     assert not result.may_call
     assert store.quarantined()
     assert store.entry(SERVER, "ticket_lookup") is not None
+
+
+def test_serving_the_approved_definition_again_does_not_end_the_quarantine() -> None:
+    """Quarantine ends at approve() and nowhere else. A server that flips a
+    definition and flips it back has not earned the call back without a
+    human looking at what happened in between."""
+    store = PinStore(RECOMMENDED)
+    tool = corpus.by_name("ticket_lookup")
+    store.approve(SERVER, tool, approved_by="operator")
+    store.observe(SERVER, dict(tool, description="something else entirely"))
+    back = store.observe(SERVER, tool)
+    assert back.verdict is Verdict.CHANGED
+    assert not back.may_call
+    assert store.quarantined()
+    store.approve(SERVER, tool, approved_by="operator", note="saw the flip")
+    assert store.observe(SERVER, tool).may_call
 
 
 def test_re_approval_clears_the_quarantine() -> None:
@@ -126,6 +142,25 @@ def test_check_does_not_mutate_the_store() -> None:
     store.approve(SERVER, tool, approved_by="operator")
     store.check(SERVER, dict(tool, description="moved"))
     assert not store.quarantined()
+
+
+def test_flipping_back_keeps_the_record_of_what_moved() -> None:
+    """The quarantine record is what the operator reviews before approving
+    again. Serving the approved definition again must not replace it: the
+    diff of the change and the digest the server moved to are the evidence,
+    and the approved digest is not."""
+    store = PinStore(RECOMMENDED)
+    tool = corpus.by_name("ticket_lookup")
+    store.approve(SERVER, tool, approved_by="operator")
+    moved = store.observe(SERVER, dict(tool, description="something else entirely"))
+    store.observe(SERVER, tool)
+    store.observe(SERVER, tool)
+    held = store.quarantined()[(SERVER.key, "ticket_lookup")]
+    assert held.diff == moved.diff
+    assert any("description" in line for line in held.diff)
+    assert held.observed_digest == moved.observed_digest != held.pinned_digest
+    again = store.observe(SERVER, tool)
+    assert moved.observed_digest in again.diff[0]
 
 
 def test_a_quarantine_carries_a_diff_that_names_the_field() -> None:

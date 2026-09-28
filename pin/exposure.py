@@ -16,10 +16,11 @@ than it is. It runs a real client against a real server over stdio. The server
 answers honestly until it has been asked `flip_after` times and then serves a
 mutated definition. The client's freshness policy decides when it re-reads. Its
 clock is injected rather than slept through, so the run takes milliseconds and
-is deterministic. The passage of time is simulated, everything else is real
-protocol traffic.
+is deterministic. The passage of time is simulated, and so are the calls: each
+one is a decision point checked against the listing the client holds, and no
+tool is invoked. The `tools/list` traffic is real.
 
-What comes out is a trade, not a winner. Re-reading on every call closes the window
+What comes out is a trade with no winner. Re-reading on every call closes the window
 to zero and costs one `tools/list` per call. That is the correct choice for
 four tools and an unreasonable one for four hundred, and the table is there so
 a deployment can locate itself on it.
@@ -146,8 +147,8 @@ async def run_arm(
 ) -> ExposureResult:
     """One freshness policy against one rug-pulling server.
 
-    The client makes `calls` tool calls `interval_ms` apart on the simulated
-    clock. It re-reads the listing only when its freshness policy says the
+    The client reaches `calls` simulated call points `interval_ms` apart on
+    the simulated clock. It re-reads the listing only when its freshness policy says the
     cached one has expired.
     """
     from pin.wire_client import connect_stdio
@@ -188,7 +189,7 @@ async def run_arm(
                 and (clock.now - cached_at) * 1000.0 < ttl_ms
             )
             if not fresh:
-                listing = await client.raw_tool_list()
+                listing = await client.checked_tool_list()
                 listings += 1
                 cached = {t["name"]: t for t in listing}
                 cached_at = clock.now

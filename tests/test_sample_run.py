@@ -24,3 +24,20 @@ def test_the_gate_capture_in_sample_run_is_what_the_gate_prints_today() -> None:
     own output moves and the page that quotes it verbatim does not.
     """
     assert _check_sample_run().problems(offline=True) == []
+
+
+def test_check_sample_run_main_returns_a_verdict_ci_can_act_on(monkeypatch, tmp_path, capsys):
+    """CI runs main(); its exit code is the verdict. 0 on the shipped page, 1
+    on a page whose gate block no longer matches a fresh run."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / "scripts"))
+    import check_sample_run as csr
+    assert csr.main(["--offline"]) == 0
+    page = (root / "SAMPLE_RUN.md").read_text(encoding="utf-8")
+    broken = tmp_path / "SAMPLE_RUN.md"
+    assert "9/9 checks passed" in page
+    broken.write_text(page.replace("9/9 checks passed", "8/9 checks passed"),
+                      encoding="utf-8")
+    monkeypatch.setattr(csr, "SAMPLE_RUN", broken)
+    assert csr.main(["--offline"]) == 1

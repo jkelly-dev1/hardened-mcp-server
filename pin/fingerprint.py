@@ -42,7 +42,11 @@ def describe_change(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
 def _walk(before: Any, after: Any, path: str, out: list[str]) -> None:
     if isinstance(before, dict) and isinstance(after, dict):
         for key in sorted(set(before) | set(after)):
-            child = f"{path}.{key}" if path else key
+            # The KEY is server text too. Printed raw, a key holding a newline
+            # forges a second diff line and a bidi control reorders the one it
+            # is on, in the prompt that asks a human to re-approve.
+            segment = _escape(str(key))
+            child = f"{path}.{segment}" if path else segment
             if key not in before:
                 out.append(f"+ {child} = {_render(after[key])}")
             elif key not in after:
@@ -54,10 +58,10 @@ def _walk(before: Any, after: Any, path: str, out: list[str]) -> None:
     if isinstance(before, list) and isinstance(after, list):
         # Compared by position, and an element past the shorter list is shown
         # with its value: an operator told that an enum grew from 3 to 4 has
-        # not been told the one thing the prompt exists to say. Positional is
-        # the honest rendering of a JSON array, whose order is significant; an
-        # insertion in the middle reads as each later element moving plus one
-        # added at the end, which is what a validator sees too.
+        # not been told what the prompt exists to say. Positional is the honest
+        # rendering of a JSON array, whose order is significant; an insertion
+        # in the middle reads as each later element moving plus one added at
+        # the end, which is what a validator sees too.
         for index in range(max(len(before), len(after))):
             child = f"{path}[{index}]"
             if index >= len(before):
@@ -77,6 +81,13 @@ def _walk(before: Any, after: Any, path: str, out: list[str]) -> None:
 _RENDER_LIMIT = 160
 
 
+def _escape(text: str) -> str:
+    """Printable ASCII as itself; every other character as a \\u escape."""
+    return "".join(
+        ch if 0x20 <= ord(ch) < 0x7F else f"\\u{ord(ch):04x}" for ch in text
+    )
+
+
 def _render(value: Any) -> str:
     """Render a value for a diff line with invisible characters made visible.
 
@@ -86,9 +97,7 @@ def _render(value: Any) -> str:
     the source file is ASCII: so a human can see what is actually there.
     """
     text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
-    escaped = "".join(
-        ch if 0x20 <= ord(ch) < 0x7F else f"\\u{ord(ch):04x}" for ch in text
-    )
+    escaped = _escape(text)
     if len(escaped) <= _RENDER_LIMIT:
         return escaped
     return escaped[:_RENDER_LIMIT] + f"... ({len(escaped)} chars)"

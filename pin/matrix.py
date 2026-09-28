@@ -166,7 +166,7 @@ def format_detail(results: tuple[ArmResult, ...]) -> str:
 def format_cross(results: tuple[ArmResult, ...]) -> str:
     """The full grid: policies down, mutations across.
 
-    `.` means the pin stayed quiet, `X` means it fired. For an adversarial
+    `.` means the pin did not fire, `X` means it fired. For an adversarial
     column `X` is the right answer; for a benign column `.` is.
     """
     header_keys = [m.key for m in MUTATIONS]

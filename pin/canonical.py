@@ -2,7 +2,7 @@
 
 Two independent stages, and keeping them independent is the point of the
 module. `select()` decides WHICH fields are in scope. `canonicalize()` decides
-HOW they are normalized. The measurement crosses them, so neither may quietly
+HOW they are normalized. The measurement crosses them, so neither may silently
 do the other's job.
 
 A note on what "raw" can mean here, because it is narrower than the name
@@ -13,7 +13,7 @@ and normalize nothing"; it separates cleanly from STRUCTURAL, which sorts keys,
 and that is the distinction the grid needs it to draw.
 
 True byte-level pinning of the transport frame is not implementable over
-`tools/list`. The reason follows rather than being left as a gap. The frame
+`tools/list`. The reason follows instead of being left as a gap. The frame
 carries `nextCursor`, `ttlMs` and `cacheScope` alongside the tools. Those are
 per-response values that legitimately differ between two identical listings, so
 a hash over the frame alarms on every page boundary and every cache decision
@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import unicodedata
 from typing import Any
 
@@ -119,6 +120,19 @@ _UNRESOLVED_MARKER = "<pin:unresolved-ref>"
 #: path and not an exotic one.
 _MAX_REF_DEPTH = 64
 
+#: How many `$ref` expansions one schema may cost. Depth alone does not bound
+#: fan-out: a chain of `$defs` each referencing the next twice is shallow and
+#: doubles at every level: without a budget a 1,900-byte definition expands to
+#: 15 million characters, and a slightly longer one exhausts 1 GiB. Past this budget
+#: a reference is not expanded; its marker digests the pointer AND the whole
+#: raw schema, so a change anywhere, including past the cap, still changes the
+#: fingerprint.
+_MAX_REF_EXPANSIONS = 2000
+
+#: Keywords whose values are DATA, not subschemas. A `$ref`-shaped object in
+#: `const` is a literal the instance must equal, not a pointer to follow.
+_DATA_KEYWORDS = ("const", "enum", "default", "examples")
+
 
 def select(raw: dict[str, Any], fields: FieldSet) -> Any:
     """Project a tool definition down to the fields a policy covers.
@@ -156,7 +170,7 @@ def canonicalize(value: Any, level: Canonicalization) -> str:
 
 
 def _dump(value: Any, *, sort_keys: bool) -> str:
-    """One serializer for every level, so the levels differ only by design.
+    """One serializer for every level, so the levels differ only where intended.
 
     `ensure_ascii=False` matters: escaping non-ASCII would turn a homoglyph
     into a distinct \\u sequence and make TEXT_FOLDED look like it caught
@@ -195,7 +209,7 @@ def fold_text(text: str) -> str:
     `tests/test_canonical.py::test_nfkc_folds_compatibility_forms_but_not_
     cyrillic_lookalikes` pins both halves, because a future reader who "fixes"
     this by adding confusable mapping would be changing what the measurement
-    measures rather than improving the control.
+    measures instead of improving the control.
     """
     folded = unicodedata.normalize("NFKC", text)
     folded = "".join(ch for ch in folded if ch not in _INVISIBLE)
@@ -236,13 +250,12 @@ def _resolve_refs(value: Any) -> Any:
       a schema whose reachable content changed MUST trigger it, however the
       change was expressed.
 
-    What this level actually buys, measured rather than assumed: only the
-    first. An edit to a LOCAL `$defs` entry is already visible to RAW and
-    STRUCTURAL, because the `$defs` block is inside the bytes they hash; they
-    catch it, just not for a reason that generalizes. So SEMANTIC is not "the
-    level that catches reference attacks"; it is the level that stops
-    punishing a rewrite which changed nothing, and it costs no coverage to
-    adopt.
+    What this level actually buys, as measured: only the first. An edit to a
+    LOCAL `$defs` entry is already visible to RAW and STRUCTURAL, because the
+    `$defs` block is inside the bytes they hash; they catch it, just not for a
+    reason that generalizes. So SEMANTIC is not "the level that catches
+    reference attacks"; it is the level that stops punishing a rewrite which
+    changed nothing, and it costs no coverage to adopt.
 
     And one case defeats every level on this ladder, which is worth more than
     a level that won: a `$ref` to a schema the client never fetched: an
@@ -251,7 +264,7 @@ def _resolve_refs(value: Any) -> Any:
     while what the tool accepts changes underneath, and there is no field-set
     or canonicalization choice that recovers it. `_dereference` returns None
     for these and `_inline` marks them `<pin:unresolved-ref>` rather than
-    quietly treating them as stable. The only real answer is a client that
+    silently treating them as stable. The only real answer is a client that
     REFUSES to pin a schema it cannot fully resolve, which is a policy
     decision this module surfaces and does not make; see
     `pin/scan.py::unresolvable_refs` and README.md, "The ceiling, and why it
@@ -329,8 +342,11 @@ def _referenced_subschemas(root: dict[str, Any]) -> set[int]:
                 target = _dereference(ref, root)
                 if target is not None:
                     found.add(id(target))
-            for value in node.values():
-                walk(value)
+            for key, value in node.items():
+                # A `$ref`-shaped object inside `const` or `enum` is data. It
+                # references nothing, so the entry it names is not dropped.
+                if key not in _DATA_KEYWORDS:
+                    walk(value)
         elif isinstance(node, list):
             for item in node:
                 walk(item)
@@ -340,14 +356,18 @@ def _referenced_subschemas(root: dict[str, Any]) -> set[int]:
 
 
 def _inline(node: Any, root: dict[str, Any], seen: tuple[str, ...], depth: int,
-            referenced: set[int] | None = None) -> Any:
+            referenced: set[int] | None = None,
+            budget: list[int] | None = None) -> Any:
     if referenced is None:
         referenced = _referenced_subschemas(root)
+    if budget is None:
+        budget = [_MAX_REF_EXPANSIONS]
     if depth > _MAX_REF_DEPTH:
         return _depth_marker(node)
 
     if isinstance(node, list):
-        return [_inline(item, root, seen, depth + 1, referenced) for item in node]
+        return [_inline(item, root, seen, depth + 1, referenced, budget)
+                for item in node]
 
     if not isinstance(node, dict):
         return node
@@ -359,30 +379,42 @@ def _inline(node: Any, root: dict[str, Any], seen: tuple[str, ...], depth: int,
             # pointer that closed it so two different cycles do not collide.
             return {"$ref": ref, "$pin": _CYCLE_MARKER}
         target = _dereference(ref, root)
+        if target is not None:
+            budget[0] -= 1
+            if budget[0] < 0:
+                return {"$ref": ref,
+                        "$pin": _depth_marker({"ref": ref, "root": root})}
         if target is None:
             # An external or unresolvable pointer. Left in place: pretending to
             # have expanded something that was never fetched would hash a
             # schema this process never saw.
             resolved: Any = {"$ref": ref, "$pin": _UNRESOLVED_MARKER}
         else:
-            resolved = _inline(target, root, seen + (ref,), depth + 1, referenced)
-        # Draft 2020-12 allows $ref to carry siblings, and the siblings apply
-        # on top of the target. Merge in that direction.
+            resolved = _inline(target, root, seen + (ref,), depth + 1,
+                               referenced, budget)
+        # Draft 2020-12 allows $ref to carry siblings, and BOTH apply: the
+        # instance must satisfy the target and the siblings. Where they share
+        # a key with different values, letting one overwrite the other would
+        # drop a constraint from the canonical form, and a change to the
+        # dropped one would then hash as a match. So a collision keeps both.
         siblings = {k: v for k, v in node.items() if k != "$ref"}
         if not siblings:
             return resolved
+        sib = _inline(siblings, root, seen, depth + 1, referenced, budget)
         if isinstance(resolved, dict):
+            if any(k in resolved and resolved[k] != v for k, v in sib.items()):
+                return {"allOf": [resolved, sib]}
             merged = dict(resolved)
-            merged.update(_inline(siblings, root, seen, depth + 1, referenced))
+            merged.update(sib)
             return merged
-        return {"$pin:target": resolved, **_inline(siblings, root, seen, depth + 1, referenced)}
+        return {"$pin:target": resolved, **sib}
 
     # `$defs` and `definitions` hold subschemas that exist only to be
     # referenced. Once a reference is inlined its entry is unreachable, and
     # keeping it would make a hoisted rewrite differ from the original: the
     # exact false alarm this level removes.
     #
-    # ONLY THE REFERENCED ENTRIES ARE DROPPED. Text in an entry nothing points
+    # Only the referenced entries are dropped. Text in an entry nothing points
     # at is still in the bytes the server sends, so a model still reads it:
     # dead weight to a validator is live text to an LLM. Dropping only what a
     # `$ref` resolved to keeps the whole benefit and pays none of that price,
@@ -392,14 +424,17 @@ def _inline(node: Any, root: dict[str, Any], seen: tuple[str, ...], depth: int,
     for key, sub in node.items():
         if key in ("$defs", "definitions") and isinstance(sub, dict):
             kept = {
-                name: _inline(entry, root, seen, depth + 1, referenced)
+                name: _inline(entry, root, seen, depth + 1, referenced, budget)
                 for name, entry in sub.items()
                 if id(entry) not in referenced
             }
             if kept:
                 out[key] = kept
             continue
-        out[key] = _inline(sub, root, seen, depth + 1, referenced)
+        if key in _DATA_KEYWORDS:
+            out[key] = sub
+            continue
+        out[key] = _inline(sub, root, seen, depth + 1, referenced, budget)
     return out
 
 
@@ -408,23 +443,29 @@ def _dereference(ref: str, root: dict[str, Any]) -> Any | None:
     if not ref.startswith("#"):
         return None
     pointer = ref[1:]
-    if pointer in ("", "/"):
+    if pointer == "":
         return root
     if not pointer.startswith("/"):
         # A `$anchor` style reference. Not resolvable without an anchor index,
         # and guessing would be worse than declaring it unresolved.
         return None
     node: Any = root
-    for token in pointer.lstrip("/").split("/"):
+    # RFC 6901: every "/" starts a token, so "#/" names the key "" and "#//x"
+    # names "" then "x". Stripping leading slashes collapsed both onto others.
+    for token in pointer[1:].split("/"):
         token = token.replace("~1", "/").replace("~0", "~")
         if isinstance(node, dict):
             if token not in node:
                 return None
             node = node[token]
         elif isinstance(node, list):
+            # An array index is digits with no leading zero: "-1" is not one,
+            # though Python would happily read it from the end.
+            if not re.fullmatch(r"0|[1-9][0-9]*", token):
+                return None
             try:
                 node = node[int(token)]
-            except (ValueError, IndexError):
+            except IndexError:
                 return None
         else:
             return None

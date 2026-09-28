@@ -3,8 +3,8 @@
 Pinning answers "has this changed since you approved it". It cannot answer "was
 it safe when you approved it", and nothing that hashes bytes ever will. This
 module is the separate, weaker, false-negative-prone control that looks at
-CONTENT, and it is a separate module on purpose, because merging a check that
-is exact with a check that is heuristic produces one number nobody can act on.
+CONTENT, and it is a separate module, because merging a check that is exact
+with a check that is heuristic produces one number nobody can act on.
 
 The asymmetry it measures. A host asking an operator to approve a tool shows a
 name and a description. The definition the model receives also carries

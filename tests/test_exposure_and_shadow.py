@@ -16,6 +16,20 @@ import pytest
 from pin.models import RECOMMENDED, Verdict
 
 pytest.importorskip("mcp", reason="the mcp SDK is not installed")
+
+from pathlib import Path  # noqa: E402
+
+README = (Path(__file__).resolve().parents[1] / "README.md").read_text(
+    encoding="utf-8")
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+async def test_the_leg_3_table_in_the_readme_is_what_the_arms_produce() -> None:
+    from pin import shadow
+    assert _flat(shadow.format_table(await shadow.run())) in _flat(README)
 pytestmark = pytest.mark.anyio
 
 
@@ -98,8 +112,10 @@ async def test_the_leg_2_table_in_the_readme_is_what_the_arms_produce() -> None:
         "cap-60s": (6, 1, 10, 60_000),
         "every-call": (12, 0, 11, 30_000),
     }
+    results = []
     for policy in exposure.POLICIES:
         result = await exposure.run_arm(policy, RECOMMENDED)
+        results.append(result)
         observed = (
             result.listings,
             result.exposed_calls,
@@ -107,6 +123,9 @@ async def test_the_leg_2_table_in_the_readme_is_what_the_arms_produce() -> None:
             result.detected_after_ms,
         )
         assert observed == expected[policy.key], policy.key
+    # The page must print exactly this table: the constants above and the
+    # README could otherwise drift apart with both halves green.
+    assert _flat(exposure.format_table(tuple(results))) in _flat(README)
 
 
 # --------------------------------------------------------------------------- #
@@ -148,7 +167,7 @@ async def test_both_arms_still_accept_the_server_that_was_actually_approved() ->
 
 
 async def test_the_imposter_serves_bytes_a_fingerprint_cannot_distinguish() -> None:
-    """The premise of the leg, checked rather than assumed.
+    """The premise of the leg, checked.
 
     If the two servers' definitions differed, the content hash would catch the
     rogue one and the leg would be reporting on the wrong variable. Serving a
@@ -157,9 +176,12 @@ async def test_the_imposter_serves_bytes_a_fingerprint_cannot_distinguish() -> N
     """
     from pin import shadow
 
-    trusted = await shadow._offered_tool(shadow._trusted_args(), shadow.SHADOWED_TOOL)
-    rogue = await shadow._offered_tool(shadow._rogue_args(), shadow.SHADOWED_TOOL)
+    trusted, trusted_name = await shadow._offered_tool(
+        shadow._trusted_args(), shadow.SHADOWED_TOOL)
+    rogue, rogue_name = await shadow._offered_tool(
+        shadow._rogue_args(), shadow.SHADOWED_TOOL)
     assert trusted == rogue
+    assert trusted_name == rogue_name == shadow.TRUSTED_NAME
     assert shadow._trusted_args() != shadow._rogue_args()
 
 
@@ -174,3 +196,13 @@ async def test_the_two_servers_are_separate_processes_reporting_one_name() -> No
     assert trusted.key != rogue.key
     assert shadow.TRUSTED_NAME in shlex.split(trusted.value)
     assert shadow.TRUSTED_NAME in shlex.split(rogue.value)
+
+
+async def test_the_name_bound_arm_reads_the_name_off_the_wire() -> None:
+    """A rogue that claims a DIFFERENT name must fall out of the name-bound
+    arm's approval: the arm keys by what each server reported, so changing
+    the report changes the verdict. A constant key would not."""
+    from pin import shadow
+    results = {r.binding: r for r in await shadow.run(rogue_name="someone-else")}
+    assert results["self-reported name"].rogue_verdict is Verdict.UNPINNED
+    assert results["self-reported name"].trusted_verdict is Verdict.MATCH

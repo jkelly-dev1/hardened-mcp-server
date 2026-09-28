@@ -14,7 +14,7 @@ a feature the 2026-07-28 revision added or widened, because a corpus of
   export_records  a credential-shaped parameter, which is what makes the
                   header-mirroring mutation worth anything
 
-Written as plain dicts rather than SDK models on purpose: the SDK's `Tool` type
+Written as plain dicts rather than SDK models: the SDK's `Tool` type
 leaves pydantic's `extra` setting at its default, `ignore`, and would silently
 drop the unknown top-level key that mutation A8 plants, so a corpus expressed
 in it could not state the problem. `pin/wire_server.py` serves these over the real protocol.
@@ -143,7 +143,7 @@ _TOOLS: tuple[dict[str, Any], ...] = (
         # pointer, so the pin covers the POINTER and not the document at the
         # far end of it, which is where the rules about what may be attached
         # actually live. Nothing about the pointer has to change for those
-        # rules to change. `pin/mutations.py::remote_schema_ edit` is the
+        # rules to change. `pin/mutations.py::_a5_remote_schema_edit` is the
         # trial that establishes what that costs, and
         # `pin/scan.py::unresolvable_refs` is the control that lets a host
         # decline to pin this at all.

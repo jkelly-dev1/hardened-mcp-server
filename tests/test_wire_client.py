@@ -107,3 +107,59 @@ def test_a_change_with_no_field_diff_is_explained_rather_than_cut_off() -> None:
     text = _explain(check)
     assert not text.rstrip().endswith(":")
     assert "encoding" in text
+
+
+def test_a_malformed_or_paginated_listing_is_refused_whole() -> None:
+    """An entry that is not an object must reach the refusal rather than be
+    dropped before it, and a listing with a second page cannot be checked
+    whole. Both refuse the listing."""
+    import asyncio
+    from pin.wire_client import PinningClient, _refuse_ambiguous
+    from pin.store import PinStore
+    from pin.models import RECOMMENDED
+
+    with pytest.raises(PermissionError, match="not an object"):
+        _refuse_ambiguous([{"name": "a"}, "junk"])
+
+    pytest.importorskip("mcp_types", reason="the request model needs the SDK")
+
+    class Paged:
+        async def send_request(self, request, adapter):
+            return {"tools": [{"name": "a"}], "nextCursor": "page-2"}
+    client = PinningClient(Paged(), SERVER, PinStore(RECOMMENDED))
+    with pytest.raises(PermissionError, match="paginated"):
+        asyncio.run(client.raw_tool_list())
+
+
+def test_a_non_object_entry_is_refused_end_to_end_and_by_the_harnesses(monkeypatch) -> None:
+    """The entry travels from the wire to the refusal: `raw_tool_list()`
+    returns it as sent, `verify()` refuses the listing, and the two
+    measurement harnesses that read a listing by name refuse it the same way.
+    Neither one fails with a TypeError on the first entry it indexes."""
+    pytest.importorskip("mcp_types", reason="the request model needs the SDK")
+    from contextlib import asynccontextmanager
+
+    from pin import exposure, shadow
+
+    class Junk:
+        async def send_request(self, request, adapter):
+            return {"tools": [corpus.by_name("export_records"), "junk"]}
+
+    def junk_client(store: PinStore | None = None) -> PinningClient:
+        return PinningClient(Junk(), SERVER, store or PinStore(RECOMMENDED),
+                             reported_name="junk-server")
+
+    client = junk_client()
+    assert "junk" in asyncio.run(client.raw_tool_list())
+    with pytest.raises(PermissionError, match="not an object"):
+        asyncio.run(client.verify())
+
+    @asynccontextmanager
+    async def fake_connect(command, args, policy, *, store=None):
+        yield junk_client(store)
+
+    monkeypatch.setattr("pin.wire_client.connect_stdio", fake_connect)
+    with pytest.raises(PermissionError, match="not an object"):
+        asyncio.run(exposure.run_arm(exposure.POLICIES[0], RECOMMENDED, calls=1))
+    with pytest.raises(PermissionError, match="not an object"):
+        asyncio.run(shadow._offered_tool(("-m", "x"), "export_records"))

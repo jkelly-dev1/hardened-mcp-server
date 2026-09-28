@@ -10,8 +10,9 @@ with the output of running that command now. Exit status is 1, with a unified
 diff, when they differ.
 
 The test-suite block is not compared here. Its last line carries a duration,
-which is the one thing on the page that is not byte-identical between runs;
-its count is checked against the collected suite by the portfolio audit.
+which is the only thing on the page that is not byte-identical between runs;
+tests/test_readme_figures.py checks its count against the count README.md
+states, and that count against the collected suite.
 """
 
 from __future__ import annotations

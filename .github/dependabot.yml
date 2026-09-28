@@ -4,7 +4,7 @@ version: 2
 # cannot change what CI runs. A SHA that nothing updates is the other failure:
 # it freezes the action and stops receiving its security fixes, which inverts
 # the intent. The github-actions entry below is what keeps the pins current,
-# and it is the reason pinning is safe to do at all.
+# which is the reason pinning is safe to do at all.
 updates:
   - package-ecosystem: "pip"
     directory: "/"

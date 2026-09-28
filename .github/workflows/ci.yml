@@ -41,7 +41,7 @@ jobs:
           pip install "pytest>=8,<10"
 
       # -rs prints the skip reasons, so a green run here shows WHICH tests
-      # skipped and why rather than looking like full coverage.
+      # skipped and why instead of looking like full coverage.
       - name: Tests
         env:
           PYTHONPATH: ${{ github.workspace }}

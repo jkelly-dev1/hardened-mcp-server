@@ -118,3 +118,21 @@ def test_the_baseline_already_mirrors_one_parameter_by_design() -> None:
     findings = header_mirrored_parameters(corpus.by_name("ticket_lookup"))
     assert len(findings) == 1
     assert "region" in findings[0].path
+
+
+def test_a_header_annotation_behind_a_ref_is_found_on_the_parameter() -> None:
+    """The exposure is the PARAMETER whose value is mirrored. A header written
+    once in `$defs` and reached through a `$ref` must be reported at the
+    property that uses it, not only where the text happens to sit: a scanner
+    reading the literal schema finds the `$defs` entry and names no
+    parameter at all."""
+    tool = {
+        "name": "t", "description": "d",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"tenant": {"$ref": "#/$defs/Tenant"}},
+            "$defs": {"Tenant": {"type": "string", "x-mcp-header": "Tenant"}},
+        },
+    }
+    paths = [f.path for f in header_mirrored_parameters(tool)]
+    assert paths == ["inputSchema.properties.tenant"]

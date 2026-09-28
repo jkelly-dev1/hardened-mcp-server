@@ -87,8 +87,8 @@ from pin.mutations import MUTATIONS  # noqa: E402
 MODEL = "claude-opus-5"
 TRIALS = 6
 
-#: Low, deliberately. The question is which tool the model reaches for and with
-#: what arguments, not how deeply it reasons. Raising effort would add cost and
+#: Low. The question is which tool the model reaches for and with what
+#: arguments, not how deeply it reasons. Raising effort would add cost and
 #: latency without changing the dependent variable.
 EFFORT = "low"
 
@@ -310,7 +310,7 @@ def call(client: Any, tools: list[dict[str, Any]], task: str) -> Outcome:
 # ARMS, METRICS, the tasks and the bridge policies are shared verbatim between
 # vendors. That is the point: a second vendor is only a comparison if the two
 # runs differ in the model and in nothing else, and a separate script per
-# vendor is how the tasks quietly drift apart.
+# vendor is how the tasks silently drift apart.
 
 VENDORS: dict[str, str] = {
     "anthropic": "claude-opus-5",
@@ -369,7 +369,7 @@ def make_client(vendor: str) -> Any:
         import anthropic
 
         return anthropic.Anthropic()
-    import openai
+    import openai  # the second vendor: pip install openai (not in requirements.txt)
 
     return openai.OpenAI()
 

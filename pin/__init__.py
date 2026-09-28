@@ -1,6 +1,6 @@
 """Tool-definition integrity for MCP clients, protocol revision 2026-07-28.
 
-The package is deliberately layered so the measurement never depends on the
+The package is layered so the measurement never depends on the
 network:
 
   models, canonical, fingerprint, store, identity, scan

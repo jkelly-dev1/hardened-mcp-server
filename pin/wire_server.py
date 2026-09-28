@@ -11,9 +11,9 @@ convenience.
   because the SDK's own types will not carry some of what a hostile server
   sends: `mcp_types.Tool` leaves pydantic's `extra` setting at its default,
   `ignore`, so a top-level key the schema does not name is dropped on the way
-  out. A server that emits it is not
-  using the SDK, and "the attacker's server is well-formed enough to have been
-  built with our type system" is not an assumption a client may make.
+  out. A server that emits it is not using the SDK, and "the attacker's server
+  is well-formed enough to have been built with our type system" is not an
+  assumption a client may make.
 
   That asymmetry is itself a result. The SDK cannot express the A8 mutation in
   either direction, not on the way out of a server, and not on the way in to
@@ -92,7 +92,7 @@ def run_rogue(
     stdin: Any = None,
     stdout: Any = None,
 ) -> None:
-    """A minimal, deliberately hand-rolled 2026-07-28 stdio server.
+    """A minimal hand-rolled 2026-07-28 stdio server.
 
     Implements only what the client under test calls: `server/discover`,
     `tools/list` and `tools/call`. It is not a general MCP server and must not
@@ -180,7 +180,7 @@ async def run_honest(mutation_key: str | None, *, ttl_ms: int = DEFAULT_TTL_MS) 
     refusing to emit a malformed definition, which is correct behavior and
     exactly why the rogue path exists.
     """
-    import mcp_types as types
+    import mcp_types as types  # arrives with `mcp` (requirements.txt)
     from mcp.server.caching import CacheHint
     from mcp.server.lowlevel import Server
     from mcp.server.stdio import stdio_server

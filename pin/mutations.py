@@ -11,15 +11,18 @@ distinguish that policy from a good one. So:
   BENIGN       a change that alters the encoding and not the meaning. MUST NOT
                be detected, and a detection here is a FALSE ALARM.
 
-The benign set is deliberately conservative. Every member is a transformation
-whose output validates identically and reads identically, so classifying it as
-noise is a defensible claim rather than a convenience. A version bump inside a
-description is NOT in this set: it changes text the model reads, and calling it
-benign to improve a false-alarm number would be exactly the accounting this
-repository exists to argue against.
+The benign set is conservative. Every member is a transformation whose output
+validates identically and reads identically, so classifying it as noise is a
+defensible claim rather than a convenience. A version bump inside a description
+is NOT in this set: it changes text the model reads, and calling it benign to
+improve a false-alarm number would be exactly the accounting this repository
+exists to argue against.
 
-The three benign cases are each accepted by exactly one canonicalization, and
-that separation is the result:
+Each of the three benign cases is first accepted at the level named below.
+key_reorder stays accepted at every level after STRUCTURAL. The other two do
+not: TEXT_FOLDED and SEMANTIC are independent, neither accepts the other's
+case, and only SEMANTIC_FOLDED, which does both, accepts all three. That
+separation is the result:
 
   key_reorder      needs STRUCTURAL   -- costs nothing
   defs_hoist       needs SEMANTIC     -- costs nothing
@@ -122,8 +125,8 @@ def _a4_schema_widening(tool: dict[str, Any]) -> dict[str, Any]:
 def _a5_remote_schema_edit(tool: dict[str, Any]) -> dict[str, Any]:
     """The document behind an external `$ref` changed. The tool did not.
 
-    This function returns the definition untouched, on purpose, and that is the
-    entire trial. `tests/test_mutations.py::test_the_remote_schema_edit_leaves_
+    The definition comes back untouched, and that is the entire trial.
+    `tests/test_mutations.py::test_the_remote_schema_edit_leaves_
     the_definition_byte_identical` asserts the no-op, so nobody later "fixes"
     it into a mutation that changes something.
 
@@ -238,10 +241,11 @@ def _b2_whitespace_only(tool: dict[str, Any]) -> dict[str, Any]:
 
 
 def _b3_defs_hoist(tool: dict[str, Any]) -> dict[str, Any]:
-    """Hoist a repeated inline subschema into `$defs` and reference it twice.
+    """Inline a subschema the original hoisted into `$defs` and referenced twice.
 
-    Validates identically to the inline form. A schema-generation library
-    upgrade produces exactly this diff.
+    The reverse of a hoist: `$defs` is removed and its entry written out at
+    both properties. Validates identically to the referenced form. A
+    schema-generation library upgrade produces exactly this diff.
     """
     schema = tool["inputSchema"]
     resolved = {
@@ -367,8 +371,8 @@ MUTATIONS: tuple[Mutation, ...] = (
         tool="send_reply",
         summary="description rewrapped, same words in the same order",
         rationale=(
-            "Accepted only by TEXT_FOLDED, which is what that level is bought "
-            "for and what makes its cost measurable."
+            "First accepted at TEXT_FOLDED, which is what that level is "
+            "bought for and what makes its cost measurable."
         ),
         apply=_b2_whitespace_only,
     ),
@@ -377,7 +381,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         kind="benign",
         tool="search_kb",
         summary="repeated subschema hoisted into $defs, validates identically",
-        rationale="Accepted only by SEMANTIC, at no cost to any detection.",
+        rationale="First accepted at SEMANTIC, at no cost to any detection.",
         apply=_b3_defs_hoist,
     ),
 )

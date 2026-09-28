@@ -14,7 +14,7 @@ Namespace by server, and not by the name the server gives you. What identifier
 remains is the one the HOST chose when it decided what to launch, which is what
 `pin/identity.py` returns and what the shipped client path uses.
 
-This measurement is a difference, not a demonstration. Both arms run the same
+This measurement is a difference between two arms. Both arms run the same
 tools against the same pins over real stdio connections. The only variable is
 where the pin's key comes from. One arm hands a rogue server an approval it
 never received; the other refuses it. Quoting the specification would have been
@@ -69,15 +69,18 @@ class ShadowResult:
         return self.trusted_still_works and not self.rogue_was_allowed
 
 
-async def _offered_tool(args: tuple[str, ...], tool: str) -> dict:
-    """Connect to a server and return one raw tool definition."""
+async def _offered_tool(args: tuple[str, ...], tool: str) -> tuple[dict, str]:
+    """Connect to a server and return one raw tool definition, with the
+    `serverInfo.name` that server reported on the same connection."""
     from pin.wire_client import connect_stdio
     from pin.models import RECOMMENDED
 
     async with connect_stdio(sys.executable, args, RECOMMENDED) as client:
-        for definition in await client.raw_tool_list():
+        if not client.reported_name:
+            raise LookupError(f"no serverInfo.name reported by {args}")
+        for definition in await client.checked_tool_list():
             if definition.get("name") == tool:
-                return definition
+                return definition, client.reported_name
     raise LookupError(f"{tool} not offered by {args}")
 
 
@@ -85,7 +88,7 @@ def _trusted_args() -> tuple[str, ...]:
     return ("-m", "pin.wire_server", "--rogue", "--server-name", TRUSTED_NAME)
 
 
-def _rogue_args() -> tuple[str, ...]:
+def _rogue_args(name: str = TRUSTED_NAME) -> tuple[str, ...]:
     """A different process, the same self-reported name, IDENTICAL bytes.
 
     The definition is not mutated. A rogue server that served a rug-pulled
@@ -108,18 +111,24 @@ def _rogue_args() -> tuple[str, ...]:
         "pin.wire_server",
         "--rogue",
         "--server-name",
-        TRUSTED_NAME,
+        name,
         "--flip-after",
         "0",
     )
 
 
-async def run() -> tuple[ShadowResult, ...]:
-    """Both bindings, against both servers."""
+async def run(rogue_name: str = TRUSTED_NAME) -> tuple[ShadowResult, ...]:
+    """Both bindings, against both servers.
+
+    The name-bound arm keys each pin by the name that server REPORTED on its
+    own connection, read off the wire, not by a constant: a measurement of
+    what name binding does has to look at the name it binds.
+    """
     from pin.models import RECOMMENDED
 
-    trusted_def = await _offered_tool(_trusted_args(), SHADOWED_TOOL)
-    rogue_def = await _offered_tool(_rogue_args(), SHADOWED_TOOL)
+    trusted_def, trusted_name = await _offered_tool(_trusted_args(), SHADOWED_TOOL)
+    rogue_def, rogue_reported = await _offered_tool(_rogue_args(rogue_name),
+                                                    SHADOWED_TOOL)
 
     results: list[ShadowResult] = []
 
@@ -127,14 +136,14 @@ async def run() -> tuple[ShadowResult, ...]:
         (
             "self-reported name",
             "pins keyed by serverInfo.name, which the spec says not to rely on",
-            from_self_reported_name(TRUSTED_NAME),
-            from_self_reported_name(TRUSTED_NAME),
+            from_self_reported_name(trusted_name),
+            from_self_reported_name(rogue_reported),
         ),
         (
             "host launch command",
             "pins keyed by what the host configured; the server cannot alter it",
             from_stdio_command(sys.executable, _trusted_args()),
-            from_stdio_command(sys.executable, _rogue_args()),
+            from_stdio_command(sys.executable, _rogue_args(rogue_name)),
         ),
     ):
         results.append(

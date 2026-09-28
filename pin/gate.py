@@ -1,8 +1,9 @@
-"""The offline gate: every published claim, re-derived, with no network.
+"""The offline gate: the offline leg's published claims, re-derived, no network.
 
-Run it with `python -m pin.gate`. It exits non-zero if any claim in README.md
-stops holding. Nothing here imports the SDK, opens a socket, or launches a
-process, so it is the same nine checks in CI, in a clean virtualenv, and on a
+Run it with `python -m pin.gate`. It exits non-zero if any claim it checks
+stops holding; tests/test_readme_figures.py checks that README.md prints what
+these same functions produce. Nothing here imports the SDK, opens a socket, or launches a
+process, so it runs the same checks in CI, in a clean virtualenv, and on a
 machine with no Python packages installed beyond the standard library.
 
 Why a gate and not just the test suite. The tests check behavior; this checks
@@ -140,7 +141,9 @@ def checks() -> list[Check]:
         )
     )
 
-    assert len(BENIGN) == 3, "the benign count is quoted in README.md"
+    if len(BENIGN) != 3:
+        # Raised, not asserted: `python -O` deletes an assert and its message.
+        raise RuntimeError("the benign count is quoted in README.md")
     return out
 
 

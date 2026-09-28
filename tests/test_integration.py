@@ -57,7 +57,7 @@ async def test_the_raw_path_preserves_a_key_the_typed_api_would_drop() -> None:
     """
     from mcp_types import Tool
 
-    # The attribution above, checked against the type rather than assumed:
+    # The attribution above, checked against the type:
     # the drop comes from pydantic's default and not from a setting `Tool`
     # declares. An SDK that starts declaring one fails here, where the
     # sentence that would then be wrong lives.
@@ -86,7 +86,7 @@ async def test_a_conformant_sdk_server_cannot_emit_the_planted_key() -> None:
 
 
 async def test_a_rug_pull_mid_session_is_refused() -> None:
-    """The end-to-end shape: trust established, then abused, then caught."""
+    """The whole-pipeline shape: trust established, then abused, then caught."""
     from pin.wire_client import connect_stdio
 
     args = rogue_args("--mutation", "header_exfil", "--flip-after", "1")

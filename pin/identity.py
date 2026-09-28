@@ -57,14 +57,14 @@ def from_stdio_command(command: str, args: tuple[str, ...] = ()) -> ServerIdenti
     A filesystem server rooted at /tmp and one rooted at $HOME are the same
     binary and are not the same trust decision.
 
-    What this does not prove, stated because it is the honest limit: the
-    command line names a path, not the bytes at that path. A server updated in
-    place keeps this identity across the update. That is intentional here and
-    it is exactly what makes rug pulls interesting. The identity is stable and
-    the TOOL DEFINITION is what moved, so the pin is the thing that has to
-    notice. A deployment wanting the stronger property should hash the
-    executable and put that in `source`, which costs a stat and a read per
-    connect and is out of scope for this measurement.
+    What this cannot prove, stated because it is the limit: the command line
+    names a path, not the bytes at that path. A server updated in place keeps
+    this identity across the update. That is intentional here, since it is
+    what makes rug pulls interesting. The identity is stable and the TOOL
+    DEFINITION is what moved, so the pin is the thing that has to notice. A
+    deployment wanting the stronger property should hash the executable and put
+    that in `source`, which costs a stat and a read per connect and is out of
+    scope for this measurement.
     """
     rendered = shlex.join([command, *args])
     return ServerIdentity(value=rendered, source="stdio-command")
@@ -78,10 +78,10 @@ _DEFAULT_PORTS = {"http": 80, "https": 443}
 def from_http_origin(url: str) -> ServerIdentity:
     """Identity of a Streamable HTTP server: scheme, host and port.
 
-    Path is deliberately excluded: two paths on one origin are one trust
-    boundary, because whoever controls the origin controls both. Including the
-    path would let a server split itself into apparently distinct identities
-    and collect a separate first-use approval for each.
+    Path is excluded: two paths on one origin are one trust boundary, because
+    whoever controls the origin controls both. Including the path would let a
+    server split itself into apparently distinct identities and collect a
+    separate first-use approval for each.
 
     Only the origin enters the key, spelled one way. An explicit default port
     is the same origin as none; userinfo names a credential, not a server. Both
